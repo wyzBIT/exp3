@@ -1,11 +1,11 @@
 #### Accuracy
 
-![示例图片](table.png)
-![s](acc.png)
+![示例图片](figure/table.png)
+![s](figure/acc.png)
 
 #### Loss
 
-![s](loss.png)
+![s](figure/loss.png)
 
 #### 中间数据
 
@@ -137,7 +137,7 @@ GRU Epoch 30/30 Train Loss: 0.1716, Train Accuracy: 0.9382, Test Loss: 0.5149, T
 
 #### Accuracy
 
-![s](table_g.png)
+![s](figure/table_g.png)
 
 #### 中间数据
 
