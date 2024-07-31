@@ -13,10 +13,10 @@ import numpy as np
 # 配置参数
 config = {
     'data_dir': 'data/imdb/aclImdb',
-    'embedding_file': 'glove.6B/glove.6B.100d.txt',  # 预训练词嵌入文件路径
+    'embedding_file': 'path/to/glove.6B.100d.txt',  # 预训练词嵌入文件路径
     'batch_size': 32,
     'embedding_dim': 100,
-    'hidden_dim': 256,
+    'hidden_dim': 128,
     'output_dim': 2,
     'vocab_size': 10000,
     'max_len': 100,
@@ -137,7 +137,7 @@ class LSTMModel(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=pad_idx)
         self.embedding.weight.data.copy_(pretrained_embeddings)  # 使用预训练的词嵌入
         self.embedding.weight.requires_grad = False  # 固定预训练词嵌入
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, batch_first=True, bidirectional=False)
         self.dropout = nn.Dropout(dropout_prob)
         self.fc = nn.Linear(hidden_dim, output_dim)
 
@@ -148,6 +148,23 @@ class LSTMModel(nn.Module):
         x = self.fc(x)
         return x
 
+# GRU 模型
+class GRUModel(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, pad_idx, dropout_prob=0.5):
+        super(GRUModel, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=pad_idx)
+        self.embedding.weight.data.copy_(pretrained_embeddings)  # 使用预训练的词嵌入
+        self.embedding.weight.requires_grad = False  # 固定预训练词嵌入
+        self.gru = nn.GRU(embedding_dim, hidden_dim, batch_first=True, bidirectional=False)
+        self.dropout = nn.Dropout(dropout_prob)
+        self.fc = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x):
+        x = self.embedding(x)
+        x, _ = self.gru(x)
+        x = self.dropout(x[:, -1, :])  # Apply dropout after GRU layer
+        x = self.fc(x)
+        return x
 
 # 训练模型的函数
 def train_epoch(model, train_loader, criterion, optimizer):
@@ -208,7 +225,7 @@ def test_epoch(model, test_loader, criterion):
 
 # 训练和测试 LSTM 模型
 print("Training LSTM model...")
-lstm_model = LSTMModel(vocab_size=vocab_size + 2,
+lstm_model = LSTMModel(vocab_size=vocab_size + 1,
                        embedding_dim=config['embedding_dim'],
                        hidden_dim=config['hidden_dim'],
                        output_dim=config['output_dim'],
@@ -236,6 +253,35 @@ for epoch in range(config['epochs']):
     lstm_test_accuracies.append(test_acc)
     lstm_class_accuracies.append(class_acc)
 
+# 训练和测试 GRU 模型
+print("\n\nTraining GRU model...")
+gru_model = GRUModel(vocab_size=vocab_size + 1,
+                     embedding_dim=config['embedding_dim'],
+                     hidden_dim=config['hidden_dim'],
+                     output_dim=config['output_dim'],
+                     pad_idx=pad_idx,
+                     dropout_prob=config['dropout_prob']).to(config['device'])
+gru_criterion = nn.CrossEntropyLoss()
+gru_optimizer = optim.Adam(gru_model.parameters(), lr=config['learning_rate'], weight_decay=config['weight_decay'])
+
+gru_train_losses, gru_train_accuracies = [], []
+gru_test_losses, gru_test_accuracies = [], []
+gru_class_accuracies = []
+
+for epoch in range(config['epochs']):
+    print(f"\nGRU Epoch {epoch + 1}/{config['epochs']}", end="\t")
+
+    train_loss, train_acc = train_epoch(gru_model, train_loader, gru_criterion, gru_optimizer)
+    test_loss, test_acc, class_acc = test_epoch(gru_model, test_loader, gru_criterion)
+
+    print(f'Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f},', end=" ")
+    print(f'Test Loss: {test_loss:.4f}, Test Accuracy: {test_acc:.4f}', end=" ")
+
+    gru_train_losses.append(train_loss)
+    gru_train_accuracies.append(train_acc)
+    gru_test_losses.append(test_loss)
+    gru_test_accuracies.append(test_acc)
+    gru_class_accuracies.append(class_acc)
 
 # 输出各模型各类别准确率和总准确率
 print("\nFinal Epoch Metrics:")
@@ -244,3 +290,29 @@ for i, acc in enumerate(lstm_class_accuracies[-1]):
     print(f"LSTM - Class {i} Accuracy: {acc:.4f}")
 print(f"LSTM - Overall Test Accuracy: {lstm_test_accuracies[-1]:.4f}")
 
+print("\nGRU Model:")
+for i, acc in enumerate(gru_class_accuracies[-1]):
+    print(f"GRU - Class {i} Accuracy: {acc:.4f}")
+print(f"GRU - Overall Test Accuracy: {gru_test_accuracies[-1]:.4f}")
+
+# 绘制图表
+def plot_comparison(lstm_data, gru_data, metric_name, title):
+    plt.figure(figsize=(12, 6))
+    epochs_range = range(1, len(lstm_data[0]) + 1)
+
+    plt.plot(epochs_range, lstm_data[0], 'b-', label='LSTM Train ' + metric_name)
+    plt.plot(epochs_range, gru_data[0], 'g-', label='GRU Train ' + metric_name)
+    plt.plot(epochs_range, lstm_data[1], 'b--', label='LSTM Test ' + metric_name)
+    plt.plot(epochs_range, gru_data[1], 'g--', label='GRU Test ' + metric_name)
+
+    plt.xlabel('Epoch')
+    plt.ylabel(metric_name)
+    plt.title(title)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+plot_comparison((lstm_train_losses, lstm_test_losses), (gru_train_losses, gru_test_losses), 'Loss',
+                'Train and Test Loss Comparison')
+plot_comparison((lstm_train_accuracies, lstm_test_accuracies), (gru_train_accuracies, gru_test_accuracies), 'Accuracy',
+                'Train and Test Accuracy Comparison')
